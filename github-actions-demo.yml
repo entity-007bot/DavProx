@@ -1,0 +1,126 @@
+name: DavProx Android CI/CD
+
+run-name: DavProx Build #${{ github.run_number }} by ${{ github.actor }} 🚀
+
+on:
+push:
+branches:
+- main
+- master
+pull_request:
+workflow_dispatch:
+
+permissions:
+contents: read
+
+concurrency:
+group: davprox-${{ github.ref }}
+cancel-in-progress: true
+
+jobs:
+build:
+name: Build and Package DavProx
+runs-on: ubuntu-latest
+timeout-minutes: 30
+
+steps:
+  - name: Checkout source code
+    uses: actions/checkout@v6
+
+  - name: Inspect project structure
+    run: |
+      echo "Repository: $GITHUB_REPOSITORY"
+      echo "Branch or ref: $GITHUB_REF"
+      echo "Commit: $GITHUB_SHA"
+      echo "Workspace contents:"
+      ls -la "$GITHUB_WORKSPACE"
+
+  - name: Verify Android Gradle project
+    run: |
+      if [ ! -f "gradlew" ]; then
+        echo "::error::Gradle wrapper not found in repository root."
+        exit 1
+      fi
+
+      if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
+        echo "::error::Gradle settings file not found in repository root."
+        exit 1
+      fi
+
+      if [ ! -d "app" ]; then
+        echo "::error::Android app module directory not found."
+        exit 1
+      fi
+
+      chmod +x ./gradlew
+      echo "Android project structure verified."
+
+  - name: Set up Java
+    uses: actions/setup-java@v5
+    with:
+      distribution: temurin
+      java-version: '17'
+
+  - name: Set up Android SDK
+    uses: android-actions/setup-android@v3
+
+  - name: Configure Gradle caching
+    uses: gradle/actions/setup-gradle@v5
+
+  - name: Check Gradle tasks
+    run: ./gradlew tasks --all
+
+  - name: Run unit tests
+    run: ./gradlew testDebugUnitTest
+
+  - name: Build debug APK
+    run: ./gradlew assembleDebug
+
+  - name: Verify generated APK
+    run: |
+      APK_DIR="app/build/outputs/apk/debug"
+
+      if [ ! -d "$APK_DIR" ]; then
+        echo "::error::APK output directory not found."
+        exit 1
+      fi
+
+      find "$APK_DIR" -maxdepth 1 -type f -name "*.apk" -print
+
+      if ! find "$APK_DIR" -maxdepth 1 -type f -name "*.apk" | grep -q .; then
+        echo "::error::No APK was generated."
+        exit 1
+      fi
+
+      mkdir -p release
+      find "$APK_DIR" -maxdepth 1 -type f -name "*.apk" \
+        -exec cp {} release/DavProx-debug.apk \;
+
+      sha256sum release/DavProx-debug.apk > release/SHA256SUMS.txt
+
+      echo "APK built successfully."
+      ls -lh release/
+
+  - name: Upload DavProx APK
+    uses: actions/upload-artifact@v6
+    with:
+      name: DavProx-Android-APK
+      path: |
+        release/DavProx-debug.apk
+        release/SHA256SUMS.txt
+      if-no-files-found: error
+      retention-days: 14
+
+  - name: Build summary
+    if: always()
+    run: |
+      {
+        echo "## DavProx Android Build"
+        echo ""
+        echo "- Repository: $GITHUB_REPOSITORY"
+        echo "- Commit: $GITHUB_SHA"
+        echo "- Trigger: $GITHUB_EVENT_NAME"
+        echo "- Job status: ${{ job.status }}"
+        echo ""
+        echo "Download the APK from the workflow run's Artifacts section if the build succeeded."
+      } >> "$GITHUB_STEP_SUMMARY"

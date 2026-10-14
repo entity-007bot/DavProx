@@ -13,8 +13,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -81,6 +85,13 @@ fun TrafficItemRow(
                 // Time & Duration
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (record.durationMs > 0) {
+                        Icon(
+                            imageVector = Icons.Default.Speed,
+                            contentDescription = "Latency",
+                            modifier = Modifier.size(13.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             text = "${record.durationMs}ms",
                             style = MaterialTheme.typography.labelSmall,
@@ -149,22 +160,59 @@ fun TrafficItemRow(
                     color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
                     shape = RoundedCornerShape(6.dp)
                 ) {
-                    Text(
-                        text = record.error,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Error",
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = record.error,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-            } else if (record.responseSize > 0) {
+            } else if (record.responseSize > 0 || record.requestSize > 0) {
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = formatBytes(record.responseSize),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (record.requestSize > 0) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowUpward,
+                            contentDescription = "Request size",
+                            modifier = Modifier.size(11.dp),
+                            tint = MaterialTheme.colorScheme.outline
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = formatBytes(record.requestSize),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    if (record.responseSize > 0) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowDownward,
+                            contentDescription = "Response size",
+                            modifier = Modifier.size(11.dp),
+                            tint = MaterialTheme.colorScheme.outline
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = formatBytes(record.responseSize),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
             }
         }
     }

@@ -25,13 +25,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -113,18 +120,35 @@ fun DavProxScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "DavProx",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "by ENTITY_007 (Chukwuyem David)",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Security,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "DavProx",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "by ENTITY_007 (Chukwuyem David)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 },
                 actions = {
@@ -376,11 +400,20 @@ fun ServerStatusBar(
                 modifier = Modifier.weight(1f)
             ) {
                 Surface(
-                    shape = CircleShape,
-                    color = if (isRunning) Color(0xFF2E7D32) else MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.size(10.dp)
-                ) {}
-                Spacer(modifier = Modifier.width(8.dp))
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isRunning) Color(0xFF2E7D32).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (isRunning) Icons.Default.Router else Icons.Default.Lan,
+                            contentDescription = null,
+                            tint = if (isRunning) Color(0xFF2E7D32) else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(10.dp))
                 Column {
                     Text(
                         text = if (isRunning) "PROXY ACTIVE : $localIp:$port" else "PROXY ENGINE STOPPED",
@@ -431,8 +464,15 @@ fun FilterBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            Icon(
+                imageVector = Icons.Default.Tune,
+                contentDescription = "Filters",
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
             StatusFilter.values().forEach { filter ->
                 FilterChip(
                     selected = selectedStatus == filter,
@@ -482,24 +522,24 @@ fun EmptyTrafficState(
             verticalArrangement = Arrangement.Center
         ) {
             Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                modifier = Modifier.size(72.dp)
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                modifier = Modifier.size(80.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = Icons.Default.SwapVert,
+                        imageVector = if (isFilterActive) Icons.Default.FilterList else Icons.Default.Sensors,
                         contentDescription = null,
-                        modifier = Modifier.size(36.dp),
+                        modifier = Modifier.size(42.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             Text(
-                text = if (isFilterActive) "No Matching Requests" else "No Network Traffic Yet",
+                text = if (isFilterActive) "No Matching Packets" else "Network Monitor Standby",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )

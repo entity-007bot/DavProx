@@ -19,7 +19,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -112,10 +115,16 @@ fun TrafficDetailSheet(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 tabs.forEachIndexed { index, title ->
+                    val tabIcon = when (index) {
+                        0 -> Icons.Default.Info
+                        1 -> Icons.Default.CloudUpload
+                        else -> Icons.Default.CloudDownload
+                    }
                     Tab(
                         selected = selectedTabIndex == index,
                         onClick = { selectedTabIndex = index },
                         text = { Text(title) },
+                        icon = { Icon(imageVector = tabIcon, contentDescription = title, modifier = Modifier.size(16.dp)) },
                         modifier = Modifier.testTag("tab_$title")
                     )
                 }

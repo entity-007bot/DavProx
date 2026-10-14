@@ -46,7 +46,7 @@ workflows:
     publishing:
       email:
         recipients:
-          - rogersrayan864@gmail.com
+          - davidchukwuyem73@gmail.com
         notify:
-          on_success: true
-          on_failure: true
+          success: true
+          failure: true

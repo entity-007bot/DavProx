@@ -1,30 +1,22 @@
-name: DavProx Android Build and Release
+name: DavProx Android Build
 
-on:
+"on":
 push:
 branches:
 - main
 - master
 workflow_dispatch:
-release:
-types:
-- published
 
 permissions:
-contents: write
-
-concurrency:
-group: davprox-${{ github.ref }}
-cancel-in-progress: true
+contents: read
 
 jobs:
 build:
 name: Build DavProx APK
 runs-on: ubuntu-latest
-timeout-minutes: 30
 
 steps:
-  - name: Checkout source code
+  - name: Checkout repository
     uses: actions/checkout@v6
 
   - name: Set up Java
@@ -39,54 +31,27 @@ steps:
   - name: Set up Gradle
     uses: gradle/actions/setup-gradle@v5
 
-  - name: Verify project
+  - name: Check project files
     run: |
-      if [ ! -f gradlew ]; then
-        echo "Gradle wrapper not found in repository root"
+      echo "Checking DavProx project..."
+      ls -la
+      test -f gradlew || {
+        echo "ERROR: gradlew is missing from the repository root."
         exit 1
-      fi
-
-      if [ ! -f app/build.gradle ] && [ ! -f app/build.gradle.kts ]; then
-        echo "Android app module not found"
+      }
+      test -f app/build.gradle -o -f app/build.gradle.kts || {
+        echo "ERROR: app Gradle build file is missing."
         exit 1
-      fi
-
+      }
       chmod +x gradlew
 
   - name: Build debug APK
     run: ./gradlew assembleDebug
 
-  - name: Verify and prepare APK
-    run: |
-      set -e
-      APK=$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name "*.apk" -print -quit)
-
-      if [ -z "$APK" ]; then
-        echo "APK was not generated"
-        exit 1
-      fi
-
-      mkdir -p release
-      cp "$APK" release/DavProx-debug.apk
-      sha256sum release/DavProx-debug.apk > release/SHA256SUMS.txt
-
-  - name: Upload APK artifact
+  - name: Upload APK
     uses: actions/upload-artifact@v6
     with:
-      name: DavProx-Android-APK
-      path: |
-        release/DavProx-debug.apk
-        release/SHA256SUMS.txt
+      name: DavProx-APK
+      path: app/build/outputs/apk/debug/*.apk
       if-no-files-found: error
       retention-days: 14
-
-  - name: Attach APK to GitHub Release
-    if: github.event_name == 'release'
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-    run: |
-      gh release upload "$GITHUB_REF_NAME" \
-        release/DavProx-debug.apk \
-        release/SHA256SUMS.txt \
-        --clobber

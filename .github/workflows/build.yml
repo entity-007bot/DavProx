@@ -1,0 +1,78 @@
+name: DavProx Android Build and Release
+
+on:
+push:
+branches: [main, master]
+workflow_dispatch:
+release:
+types: [published]
+
+permissions:
+contents: write
+
+concurrency:
+group: davprox-${{ github.ref }}
+cancel-in-progress: true
+
+jobs:
+build:
+name: Build DavProx APK
+runs-on: ubuntu-latest
+timeout-minutes: 30
+
+steps:
+  - name: Checkout source code
+    uses: actions/checkout@v6
+
+  - name: Set up Java
+    uses: actions/setup-java@v5
+    with:
+      distribution: temurin
+      java-version: '17'
+
+  - name: Set up Android SDK
+    uses: android-actions/setup-android@v3
+
+  - name: Set up Gradle
+    uses: gradle/actions/setup-gradle@v5
+
+  - name: Verify project
+    run: |
+      test -f gradlew || {
+        echo "Gradle wrapper not found"
+        exit 1
+      }
+      test -f app/build.gradle -o -f app/build.gradle.kts || {
+        echo "Android app module not found"
+        exit 1
+      }
+      chmod +x gradlew
+
+  - name: Build APK
+    run: ./gradlew assembleDebug
+
+  - name: Prepare APK
+    run: |
+      mkdir -p release
+      cp app/build/outputs/apk/debug/*.apk release/DavProx-debug.apk
+      sha256sum release/DavProx-debug.apk > release/SHA256SUMS.txt
+
+  - name: Upload APK artifact
+    uses: actions/upload-artifact@v6
+    with:
+      name: DavProx-Android-APK
+      path: |
+        release/DavProx-debug.apk
+        release/SHA256SUMS.txt
+      retention-days: 14
+
+  - name: Publish APK to GitHub Release
+    if: github.event_name == 'release'
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    run: |
+      gh release upload "$GITHUB_REF_NAME" \
+        release/DavProx-debug.apk \
+        release/SHA256SUMS.txt \
+        --clobber

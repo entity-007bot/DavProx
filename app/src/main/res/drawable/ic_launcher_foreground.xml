@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Center Proxy Server Shield / Gateway -->
+    <path
+        android:fillColor="#1C2541"
+        android:pathData="M54,28 L78,38 L78,56 C78,70 68,82 54,86 C40,82 30,70 30,56 L30,38 Z" />
+
+    <path
+        android:strokeColor="#3A506B"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:pathData="M54,28 L78,38 L78,56 C78,70 68,82 54,86 C40,82 30,70 30,56 L30,38 Z" />
+
+    <!-- Upstream / Inbound Arrow (Cyan) -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M48,46 L48,66 L44,66 L44,46 L40,46 L46,38 L52,46 Z" />
+
+    <!-- Downstream / Outbound Arrow (Emerald Green) -->
+    <path
+        android:fillColor="#00E676"
+        android:pathData="M60,60 L60,40 L64,40 L64,60 L68,60 L62,68 L56,60 Z" />
+
+    <!-- Core Proxy Dot -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,54m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0" />
+</vector>

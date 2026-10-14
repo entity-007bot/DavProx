@@ -1,0 +1,6 @@
+{
+  "name": "DavProx",
+  "description": "Network traffic inspector and HTTP/HTTPS debugging proxy for mobile devices.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

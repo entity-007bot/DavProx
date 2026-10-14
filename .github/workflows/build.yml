@@ -32,38 +32,30 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.10.2'
 
       - name: Accept Android SDK licenses
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
-      - name: Check project files
+      - name: Create debug keystore
         run: |
-          echo "Repository contents:"
-          ls -la
-          if [ -f gradlew ]; then
-            chmod +x gradlew
-            echo "Using Gradle wrapper"
-          else
-            echo "No gradlew found, falling back to system Gradle"
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
           fi
-          if [ ! -f settings.gradle ] && [ ! -f settings.gradle.kts ]; then
-            echo "ERROR: settings.gradle(.kts) not found in repo root."
-            exit 1
-          fi
+
+      - name: Prepare Gradle wrapper
+        run: |
+          test -f gradlew || { echo "ERROR: gradlew missing"; exit 1; }
+          chmod +x gradlew
 
       - name: Build debug APK
-        run: |
-          if [ -f gradlew ]; then
-            ./gradlew assembleDebug --stacktrace --no-daemon
-          else
-            gradle assembleDebug --stacktrace --no-daemon
-          fi
-
-      - name: List built APKs
-        run: find . -name "*.apk" -type f
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

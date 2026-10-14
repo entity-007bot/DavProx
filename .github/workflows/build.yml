@@ -2,10 +2,13 @@ name: DavProx Android Build and Release
 
 on:
 push:
-branches: [main, master]
+branches:
+- main
+- master
 workflow_dispatch:
 release:
-types: [published]
+types:
+- published
 
 permissions:
 contents: write
@@ -38,23 +41,33 @@ steps:
 
   - name: Verify project
     run: |
-      test -f gradlew || {
-        echo "Gradle wrapper not found"
+      if [ ! -f gradlew ]; then
+        echo "Gradle wrapper not found in repository root"
         exit 1
-      }
-      test -f app/build.gradle -o -f app/build.gradle.kts || {
+      fi
+
+      if [ ! -f app/build.gradle ] && [ ! -f app/build.gradle.kts ]; then
         echo "Android app module not found"
         exit 1
-      }
+      fi
+
       chmod +x gradlew
 
-  - name: Build APK
+  - name: Build debug APK
     run: ./gradlew assembleDebug
 
-  - name: Prepare APK
+  - name: Verify and prepare APK
     run: |
+      set -e
+      APK=$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name "*.apk" -print -quit)
+
+      if [ -z "$APK" ]; then
+        echo "APK was not generated"
+        exit 1
+      fi
+
       mkdir -p release
-      cp app/build/outputs/apk/debug/*.apk release/DavProx-debug.apk
+      cp "$APK" release/DavProx-debug.apk
       sha256sum release/DavProx-debug.apk > release/SHA256SUMS.txt
 
   - name: Upload APK artifact
@@ -64,9 +77,10 @@ steps:
       path: |
         release/DavProx-debug.apk
         release/SHA256SUMS.txt
+      if-no-files-found: error
       retention-days: 14
 
-  - name: Publish APK to GitHub Release
+  - name: Attach APK to GitHub Release
     if: github.event_name == 'release'
     env:
       GH_TOKEN: ${{ github.token }}

@@ -1,6 +1,7 @@
 package com.example.davprox.engine
 
 import com.example.davprox.data.TrafficRepository
+import com.example.davprox.model.TrafficClassification
 import com.example.davprox.model.TrafficRecord
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -8,7 +9,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import okio.Buffer
+import org.json.JSONObject
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.URL
@@ -43,7 +44,8 @@ object LiveNetworkTester {
         headers: Map<String, String> = emptyMap(),
         bodyContent: String? = null,
         routeViaLocalProxy: Boolean = false,
-        proxyPort: Int = 8080
+        proxyPort: Int = 8080,
+        isReplay: Boolean = false
     ): Result<TrafficRecord> = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         val recordId = UUID.randomUUID().toString()
@@ -66,7 +68,7 @@ object LiveNetworkTester {
             requestBuilder.addHeader(k, v)
         }
         if (!headers.containsKey("User-Agent")) {
-            requestBuilder.addHeader("User-Agent", "DavProx/1.0 (Android; Tecno Device Inspector)")
+            requestBuilder.addHeader("User-Agent", "DavProx/1.0 (Android; Network Inspector)")
         }
 
         val mediaType = (headers["Content-Type"] ?: "application/json; charset=utf-8").toMediaTypeOrNull()
@@ -85,21 +87,44 @@ object LiveNetworkTester {
             reqHeadersMap[request.headers.name(i)] = request.headers.value(i)
         }
 
+        val queryParams = mutableMapOf<String, String>()
+        parsedUrl.query?.let { q ->
+            queryParams.putAll(TrafficRecord.parseUrlEncoded(q))
+        }
+
+        val reqContentType = headers["Content-Type"]
+        val formParams = mutableMapOf<String, String>()
+        if (reqContentType?.contains("application/x-www-form-urlencoded", ignoreCase = true) == true) {
+            formParams.putAll(TrafficRecord.parseUrlEncoded(bodyContent))
+        } else if (reqContentType?.contains("application/json", ignoreCase = true) == true && bodyContent != null) {
+            try {
+                val json = JSONObject(bodyContent)
+                json.keys().forEach { k -> formParams[k] = json.optString(k, "") }
+            } catch (_: Exception) {}
+        }
+
         val initialRecord = TrafficRecord(
             id = recordId,
             timestamp = startTime,
             method = method.uppercase(),
+            scheme = parsedUrl.protocol,
             url = urlStr,
             host = parsedUrl.host,
             port = if (parsedUrl.port != -1) parsedUrl.port else parsedUrl.defaultPort,
+            path = parsedUrl.path.ifEmpty { "/" },
+            queryParams = queryParams,
             protocol = "HTTP/1.1",
             requestHeaders = reqHeadersMap,
+            requestContentType = reqContentType,
             requestBody = bodyContent,
+            formParameters = formParams,
             requestSize = (bodyContent?.toByteArray(Charsets.UTF_8)?.size ?: 0).toLong(),
-            clientIp = "127.0.0.1"
+            clientIp = "127.0.0.1",
+            classification = TrafficClassification.PARSED_HTTP,
+            isReplay = isReplay
         )
 
-        // Only log manually if not routed through the local proxy socket,
+        // Only log directly if not routed through the local proxy socket,
         // because the proxy socket server already captures proxy-routed requests!
         if (!routeViaLocalProxy || !ProxyServerEngine.isRunning.value) {
             TrafficRepository.addRecord(initialRecord)
@@ -121,6 +146,7 @@ object LiveNetworkTester {
                 responseCode = response.code,
                 responseMessage = response.message,
                 responseHeaders = respHeadersMap,
+                responseContentType = response.header("Content-Type"),
                 responseBody = responseBodyString,
                 durationMs = duration,
                 responseSize = responseSize

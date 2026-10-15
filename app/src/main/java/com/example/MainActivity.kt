@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import com.example.davprox.ui.DavProxScreen
 import com.example.ui.theme.MyApplicationTheme
 
+// DavProx by ENTITY_007 (Chukwuyem David) - Network Traffic Inspector
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)

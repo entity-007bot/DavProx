@@ -2,6 +2,7 @@ package com.example.davprox.engine
 
 import android.util.Log
 import com.example.davprox.data.TrafficRepository
+import com.example.davprox.model.TrafficClassification
 import com.example.davprox.model.TrafficRecord
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -11,10 +12,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
@@ -72,15 +75,18 @@ object ProxyServerEngine {
 
         serverJob = scope.launch {
             try {
-                val socket = ServerSocket(port)
+                // Bind to 0.0.0.0 so all interfaces (loopback 127.0.0.1 and Wi-Fi LAN IP) can route traffic
+                val socket = ServerSocket()
+                socket.reuseAddress = true
+                socket.bind(InetSocketAddress(port))
                 serverSocket = socket
                 _isRunning.value = true
-                Log.i(TAG, "DavProx Proxy Server started on port $port")
+                Log.i(TAG, "DavProx Proxy Server started on 0.0.0.0:$port")
 
                 while (isActive && !socket.isClosed) {
                     try {
                         val clientSocket = socket.accept()
-                        clientSocket.soTimeout = 15000 // 15s timeout
+                        clientSocket.soTimeout = 20000 // 20s socket timeout
                         _activeConnections.value += 1
                         scope.launch {
                             handleClient(clientSocket)
@@ -121,32 +127,50 @@ object ProxyServerEngine {
             val clientIn = clientSocket.getInputStream()
             val clientOut = clientSocket.getOutputStream()
 
-            // Read the HTTP request line
-            val requestLine = readLine(clientIn) ?: return
-            val parts = requestLine.trim().split(" ")
-            if (parts.size < 2) return
+            // Keep connection open for HTTP Keep-Alive persistent sessions from Chrome
+            var keepAlive = true
+            while (keepAlive && clientSocket.isConnected && !clientSocket.isClosed && scope.isActive) {
+                // Read HTTP request line
+                val requestLine = try {
+                    readLine(clientIn)
+                } catch (_: SocketTimeoutException) {
+                    break
+                } ?: break
 
-            val method = parts[0].uppercase()
-            val rawTarget = parts[1]
-            val protocol = if (parts.size >= 3) parts[2] else "HTTP/1.1"
+                val trimmed = requestLine.trim()
+                if (trimmed.isEmpty()) continue
 
-            // Read headers
-            val headers = mutableMapOf<String, String>()
-            while (true) {
-                val line = readLine(clientIn) ?: break
-                if (line.isEmpty()) break
-                val colonIdx = line.indexOf(':')
-                if (colonIdx != -1) {
-                    val key = line.substring(0, colonIdx).trim()
-                    val value = line.substring(colonIdx + 1).trim()
-                    headers[key] = value
+                val parts = trimmed.split(" ")
+                if (parts.size < 2) break
+
+                val method = parts[0].uppercase()
+                val rawTarget = parts[1]
+                val protocol = if (parts.size >= 3) parts[2] else "HTTP/1.1"
+
+                // Read request headers
+                val headers = mutableMapOf<String, String>()
+                while (true) {
+                    val line = readLine(clientIn) ?: break
+                    if (line.isEmpty()) break
+                    val colonIdx = line.indexOf(':')
+                    if (colonIdx != -1) {
+                        val key = line.substring(0, colonIdx).trim()
+                        val value = line.substring(colonIdx + 1).trim()
+                        headers[key] = value
+                    }
                 }
-            }
 
-            if (method == "CONNECT") {
-                handleHttpsConnect(clientSocket, clientIn, clientOut, rawTarget, protocol, headers, clientIp)
-            } else {
-                handleHttpRequest(clientSocket, clientIn, clientOut, method, rawTarget, protocol, headers, clientIp)
+                val connHeader = headers["Connection"] ?: headers["Proxy-Connection"] ?: ""
+                if (connHeader.equals("close", ignoreCase = true) || protocol == "HTTP/1.0") {
+                    keepAlive = false
+                }
+
+                if (method == "CONNECT") {
+                    handleHttpsConnect(clientSocket, clientIn, clientOut, rawTarget, protocol, headers, clientIp)
+                    keepAlive = false // CONNECT tunnels take over the socket completely
+                } else {
+                    handleHttpRequest(clientIn, clientOut, method, rawTarget, protocol, headers, clientIp)
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error handling client connection: ${e.message}")
@@ -175,16 +199,19 @@ object ProxyServerEngine {
             id = recordId,
             timestamp = startTime,
             method = "CONNECT",
+            scheme = "https",
             url = "https://$target",
             host = host,
             port = port,
+            path = "/",
             protocol = protocol,
             requestHeaders = headers,
             requestBody = null,
             responseCode = 0,
-            responseMessage = "Tunnel Pending",
+            responseMessage = "TLS Tunnel Handshake",
             durationMs = 0,
             isTlsTunnel = true,
+            classification = TrafficClassification.NETWORK_TUNNEL,
             clientIp = clientIp
         )
         TrafficRepository.addRecord(initialRecord)
@@ -192,23 +219,25 @@ object ProxyServerEngine {
         var remoteSocket: Socket? = null
         try {
             remoteSocket = Socket(host, port)
-            remoteSocket.soTimeout = 30000
+            remoteSocket.soTimeout = 45000
+            val destIp = remoteSocket.inetAddress?.hostAddress
 
-            // Respond 200 OK to establish tunnel
+            // Respond 200 OK to establish tunnel with Chrome/browser
             val okResponse = "HTTP/1.1 200 Connection Established\r\nProxy-Agent: DavProx/1.0\r\n\r\n"
             clientOut.write(okResponse.toByteArray(Charsets.US_ASCII))
             clientOut.flush()
 
-            val tunnelStart = System.currentTimeMillis()
+            val tunnelConnected = System.currentTimeMillis()
             TrafficRepository.updateRecord(
                 initialRecord.copy(
+                    destIp = destIp,
                     responseCode = 200,
                     responseMessage = "Connection Established",
-                    durationMs = tunnelStart - startTime
+                    durationMs = tunnelConnected - startTime
                 )
             )
 
-            // Bi-directional relay between client and remote server
+            // Bi-directional relay between browser client and remote server
             val remoteIn = remoteSocket.getInputStream()
             val remoteOut = remoteSocket.getOutputStream()
 
@@ -225,6 +254,7 @@ object ProxyServerEngine {
                 val totalDuration = System.currentTimeMillis() - startTime
                 TrafficRepository.updateRecord(
                     initialRecord.copy(
+                        destIp = destIp,
                         responseCode = 200,
                         responseMessage = "Tunnel Closed",
                         durationMs = totalDuration
@@ -251,7 +281,6 @@ object ProxyServerEngine {
     }
 
     private fun handleHttpRequest(
-        clientSocket: Socket,
         clientIn: InputStream,
         clientOut: OutputStream,
         method: String,
@@ -263,7 +292,7 @@ object ProxyServerEngine {
         val startTime = System.currentTimeMillis()
         val recordId = UUID.randomUUID().toString()
 
-        // Read request body if present
+        // Read request body if present (e.g. form POST, JSON payload)
         val contentLength = headers["Content-Length"]?.toIntOrNull() ?: 0
         val requestBodyBytes = if (contentLength > 0) {
             readExact(clientIn, contentLength)
@@ -274,7 +303,7 @@ object ProxyServerEngine {
             String(requestBodyBytes, Charsets.UTF_8)
         } else null
 
-        // Parse target URL and host
+        // Parse target URL, host, path, query parameters
         val urlObj = try {
             if (rawTarget.startsWith("http://") || rawTarget.startsWith("https://")) {
                 URL(rawTarget)
@@ -286,8 +315,9 @@ object ProxyServerEngine {
             null
         }
 
+        val scheme = urlObj?.protocol ?: "http"
         val host = urlObj?.host ?: headers["Host"] ?: "unknown"
-        val port = if (urlObj != null && urlObj.port != -1) urlObj.port else 80
+        val port = if (urlObj != null && urlObj.port != -1) urlObj.port else if (scheme == "https") 443 else 80
         val fullUrl = urlObj?.toString() ?: rawTarget
         val requestPath = if (urlObj != null) {
             val p = urlObj.path.ifEmpty { "/" }
@@ -296,17 +326,43 @@ object ProxyServerEngine {
             rawTarget
         }
 
+        // Parse query parameters
+        val queryParams = mutableMapOf<String, String>()
+        urlObj?.query?.let { q ->
+            queryParams.putAll(TrafficRecord.parseUrlEncoded(q))
+        }
+
+        // Parse form parameters if application/x-www-form-urlencoded or application/json
+        val reqContentType = headers["Content-Type"]
+        val formParams = mutableMapOf<String, String>()
+        if (reqContentType?.contains("application/x-www-form-urlencoded", ignoreCase = true) == true) {
+            formParams.putAll(TrafficRecord.parseUrlEncoded(requestBodyStr))
+        } else if (reqContentType?.contains("application/json", ignoreCase = true) == true && requestBodyStr != null) {
+            try {
+                val json = JSONObject(requestBodyStr)
+                json.keys().forEach { k ->
+                    formParams[k] = json.optString(k, "")
+                }
+            } catch (_: Exception) {}
+        }
+
         val initialRecord = TrafficRecord(
             id = recordId,
             timestamp = startTime,
             method = method,
+            scheme = scheme,
             url = fullUrl,
             host = host,
             port = port,
+            path = requestPath.substringBefore("?"),
+            queryParams = queryParams,
             protocol = protocol,
             requestHeaders = headers,
+            requestContentType = reqContentType,
             requestBody = requestBodyStr,
+            formParameters = formParams,
             requestSize = (requestLineBytes(method, requestPath, protocol) + headersSize(headers) + requestBodyBytes.size).toLong(),
+            classification = TrafficClassification.PARSED_HTTP,
             clientIp = clientIp
         )
         TrafficRepository.addRecord(initialRecord)
@@ -315,6 +371,7 @@ object ProxyServerEngine {
         try {
             remoteSocket = Socket(host, port)
             remoteSocket.soTimeout = 15000
+            val destIp = remoteSocket.inetAddress?.hostAddress
 
             val remoteOut = remoteSocket.getOutputStream()
             val remoteIn = remoteSocket.getInputStream()
@@ -323,14 +380,13 @@ object ProxyServerEngine {
             val outboundReqLine = "$method $requestPath $protocol\r\n"
             remoteOut.write(outboundReqLine.toByteArray(Charsets.US_ASCII))
 
-            // Forward headers (strip proxy-specific ones if present)
+            // Forward headers (strip proxy specific ones and set close for clear upstream boundary)
             for ((key, value) in headers) {
                 if (!key.equals("Proxy-Connection", ignoreCase = true)) {
                     remoteOut.write("$key: $value\r\n".toByteArray(Charsets.US_ASCII))
                 }
             }
-            remoteOut.write("Connection: close\r\n".toByteArray(Charsets.US_ASCII))
-            remoteOut.write("\r\n".toByteArray(Charsets.US_ASCII))
+            remoteOut.write("Connection: close\r\n\r\n".toByteArray(Charsets.US_ASCII))
 
             // Forward request body if present
             if (requestBodyBytes.isNotEmpty()) {
@@ -356,16 +412,21 @@ object ProxyServerEngine {
                 }
             }
 
-            // Read body
+            val respContentType = responseHeaders["Content-Type"]
+            val respTransferEncoding = responseHeaders["Transfer-Encoding"]
             val respContentLen = responseHeaders["Content-Length"]?.toIntOrNull()
-            val responseBodyBytes = ByteArrayOutputStream()
-            val buffer = ByteArray(4096)
 
-            if (respContentLen != null && respContentLen > 0) {
+            val responseBodyBytes = ByteArrayOutputStream()
+
+            // Read response body based on content length or chunked encoding
+            if (respTransferEncoding?.contains("chunked", ignoreCase = true) == true) {
+                readChunkedBody(remoteIn, responseBodyBytes)
+            } else if (respContentLen != null && respContentLen > 0) {
                 val body = readExact(remoteIn, respContentLen)
                 responseBodyBytes.write(body)
             } else {
-                // Read until end or timeout
+                // Read until EOF or socket close from remote server
+                val buffer = ByteArray(4096)
                 var read: Int
                 try {
                     while (remoteIn.read(buffer).also { read = it } != -1) {
@@ -377,7 +438,7 @@ object ProxyServerEngine {
             val finalBodyBytes = responseBodyBytes.toByteArray()
             val finalDuration = System.currentTimeMillis() - startTime
 
-            // Write full response back to client socket
+            // Write full response back to browser client
             clientOut.write("$responseStatusLine\r\n".toByteArray(Charsets.US_ASCII))
             for ((k, v) in responseHeaders) {
                 clientOut.write("$k: $v\r\n".toByteArray(Charsets.US_ASCII))
@@ -391,14 +452,16 @@ object ProxyServerEngine {
             val bodyString = try {
                 String(finalBodyBytes, Charsets.UTF_8)
             } catch (_: Exception) {
-                "[Binary data: ${finalBodyBytes.size} bytes]"
+                "[Binary payload: ${finalBodyBytes.size} bytes]"
             }
 
             TrafficRepository.updateRecord(
                 initialRecord.copy(
+                    destIp = destIp,
                     responseCode = statusCode,
                     responseMessage = statusMsg,
                     responseHeaders = responseHeaders,
+                    responseContentType = respContentType,
                     responseBody = bodyString,
                     durationMs = finalDuration,
                     responseSize = finalBodyBytes.size.toLong()
@@ -406,7 +469,7 @@ object ProxyServerEngine {
             )
         } catch (e: Exception) {
             val failDuration = System.currentTimeMillis() - startTime
-            val failMsg = "HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\n\r\nProxy error: ${e.message}"
+            val failMsg = "HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nDavProx: ${e.message}"
             try {
                 clientOut.write(failMsg.toByteArray())
                 clientOut.flush()
@@ -422,6 +485,23 @@ object ProxyServerEngine {
             )
         } finally {
             try { remoteSocket?.close() } catch (_: Exception) {}
+        }
+    }
+
+    private fun readChunkedBody(input: InputStream, output: ByteArrayOutputStream) {
+        while (true) {
+            val sizeLine = readLine(input) ?: break
+            val chunkSizeStr = sizeLine.trim().split(";")[0]
+            val chunkSize = chunkSizeStr.toIntOrNull(16) ?: break
+            if (chunkSize == 0) {
+                // Read trailing CRLF
+                readLine(input)
+                break
+            }
+            val chunk = readExact(input, chunkSize)
+            output.write(chunk)
+            // Read trailing CRLF after chunk
+            readLine(input)
         }
     }
 

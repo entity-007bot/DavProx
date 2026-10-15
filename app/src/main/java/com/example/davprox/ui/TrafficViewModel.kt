@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.davprox.data.TrafficRepository
 import com.example.davprox.engine.LiveNetworkTester
 import com.example.davprox.engine.ProxyServerEngine
+import com.example.davprox.model.EndpointEntry
 import com.example.davprox.model.TrafficRecord
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -23,6 +24,13 @@ enum class StatusFilter(val label: String) {
     FAILED("Errors")
 }
 
+enum class MainAppTab(val label: String) {
+    TRAFFIC("Live Traffic"),
+    ENDPOINTS("Endpoints"),
+    REPEATER("Repeater"),
+    DIAGNOSTICS("Diagnostics")
+}
+
 class TrafficViewModel : ViewModel() {
 
     val isProxyRunning: StateFlow<Boolean> = ProxyServerEngine.isRunning
@@ -30,8 +38,22 @@ class TrafficViewModel : ViewModel() {
     val activeConnections: StateFlow<Int> = ProxyServerEngine.activeConnections
     val proxyError: StateFlow<String?> = ProxyServerEngine.lastError
 
+    val isPaused: StateFlow<Boolean> = TrafficRepository.isPaused
+    val isRedactionEnabled: StateFlow<Boolean> = TrafficRepository.isRedactionEnabled
+
+    val totalObserved: StateFlow<Int> = TrafficRepository.totalObserved
+    val httpsTunnelsCount: StateFlow<Int> = TrafficRepository.httpsTunnelsCount
+    val parsedHttpCount: StateFlow<Int> = TrafficRepository.parsedHttpCount
+    val failuresCount: StateFlow<Int> = TrafficRepository.failuresCount
+
+    private val _selectedTab = MutableStateFlow(MainAppTab.TRAFFIC)
+    val selectedTab: StateFlow<MainAppTab> = _selectedTab.asStateFlow()
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _endpointSearchQuery = MutableStateFlow("")
+    val endpointSearchQuery: StateFlow<String> = _endpointSearchQuery.asStateFlow()
 
     private val _selectedStatusFilter = MutableStateFlow(StatusFilter.ALL)
     val selectedStatusFilter: StateFlow<StatusFilter> = _selectedStatusFilter.asStateFlow()
@@ -48,7 +70,17 @@ class TrafficViewModel : ViewModel() {
     private val _liveRequestMessage = MutableStateFlow<String?>(null)
     val liveRequestMessage: StateFlow<String?> = _liveRequestMessage.asStateFlow()
 
-    // Automatically filter records based on query, status filter, and method
+    // Repeater states
+    private val _repeaterOriginalRecord = MutableStateFlow<TrafficRecord?>(null)
+    val repeaterOriginalRecord: StateFlow<TrafficRecord?> = _repeaterOriginalRecord.asStateFlow()
+
+    private val _repeaterReplayedRecord = MutableStateFlow<TrafficRecord?>(null)
+    val repeaterReplayedRecord: StateFlow<TrafficRecord?> = _repeaterReplayedRecord.asStateFlow()
+
+    private val _isReplaying = MutableStateFlow(false)
+    val isReplaying: StateFlow<Boolean> = _isReplaying.asStateFlow()
+
+    // Filtered records
     val filteredRecords: StateFlow<List<TrafficRecord>> = combine(
         TrafficRepository.records,
         _searchQuery,
@@ -77,17 +109,46 @@ class TrafficViewModel : ViewModel() {
             record.url.lowercase().contains(q) ||
                 record.host.lowercase().contains(q) ||
                 record.method.lowercase().contains(q) ||
+                record.path.lowercase().contains(q) ||
                 (record.responseMessage.lowercase().contains(q)) ||
                 (record.requestBody?.lowercase()?.contains(q) == true) ||
-                (record.responseBody?.lowercase()?.contains(q) == true)
+                (record.responseBody?.lowercase()?.contains(q) == true) ||
+                record.formParameters.any { it.key.lowercase().contains(q) || it.value.lowercase().contains(q) }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Filtered endpoints
+    val filteredEndpoints: StateFlow<List<EndpointEntry>> = combine(
+        TrafficRepository.records,
+        _endpointSearchQuery
+    ) { _, query ->
+        val list = TrafficRepository.getDiscoveredEndpoints()
+        if (query.isBlank()) {
+            list
+        } else {
+            val q = query.trim().lowercase()
+            list.filter {
+                it.domain.lowercase().contains(q) ||
+                    it.path.lowercase().contains(q) ||
+                    it.method.lowercase().contains(q) ||
+                    it.contentType.lowercase().contains(q)
+            }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val totalCount: StateFlow<Int> = combine(TrafficRepository.records) { it.first().size }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    fun setSelectedTab(tab: MainAppTab) {
+        _selectedTab.value = tab
+    }
+
     fun onSearchQueryChanged(query: String) {
         _searchQuery.value = query
+    }
+
+    fun onEndpointSearchQueryChanged(query: String) {
+        _endpointSearchQuery.value = query
     }
 
     fun onStatusFilterChanged(filter: StatusFilter) {
@@ -100,6 +161,14 @@ class TrafficViewModel : ViewModel() {
 
     fun selectRecord(record: TrafficRecord?) {
         _selectedRecord.value = record
+    }
+
+    fun togglePause() {
+        TrafficRepository.togglePause()
+    }
+
+    fun toggleRedaction() {
+        TrafficRepository.toggleRedaction()
     }
 
     fun toggleProxy() {
@@ -116,7 +185,6 @@ class TrafficViewModel : ViewModel() {
         if (wasRunning) {
             ProxyServerEngine.startProxy(port)
         } else {
-            // Just update port
             ProxyServerEngine.startProxy(port)
             ProxyServerEngine.stopProxy()
         }
@@ -125,10 +193,49 @@ class TrafficViewModel : ViewModel() {
     fun clearHistory() {
         TrafficRepository.clearAll()
         _selectedRecord.value = null
+        _repeaterOriginalRecord.value = null
+        _repeaterReplayedRecord.value = null
     }
 
     fun getLocalIpAddress(): String {
         return ProxyServerEngine.getLocalIpAddress()
+    }
+
+    fun prepareRepeater(record: TrafficRecord) {
+        _repeaterOriginalRecord.value = record
+        _repeaterReplayedRecord.value = null
+        _selectedTab.value = MainAppTab.REPEATER
+    }
+
+    fun executeRepeaterRequest(
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        body: String?
+    ) {
+        _isReplaying.value = true
+        viewModelScope.launch {
+            val result = LiveNetworkTester.executeLiveRequest(
+                urlStr = url,
+                method = method,
+                headers = headers,
+                bodyContent = body,
+                routeViaLocalProxy = false,
+                isReplay = true
+            )
+            _isReplaying.value = false
+            result.fold(
+                onSuccess = { replayed ->
+                    _repeaterReplayedRecord.value = replayed
+                    _repeaterOriginalRecord.value?.let { orig ->
+                        TrafficRepository.setReplayComparison(orig, replayed)
+                    }
+                },
+                onFailure = { err ->
+                    _liveRequestMessage.value = "Replay failed: ${err.localizedMessage}"
+                }
+            )
+        }
     }
 
     fun sendTestRequest(
@@ -169,12 +276,11 @@ class TrafficViewModel : ViewModel() {
         return TrafficRepository.exportAsJson()
     }
 
-    fun getCurl(record: TrafficRecord): String {
-        return TrafficRepository.generateCurl(record)
+    fun getEndpointsExportJson(): String {
+        return TrafficRepository.exportEndpointsAsJson()
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        // Do not necessarily kill server on background unless needed
+    fun getCurl(record: TrafficRecord): String {
+        return TrafficRepository.generateCurl(record)
     }
 }

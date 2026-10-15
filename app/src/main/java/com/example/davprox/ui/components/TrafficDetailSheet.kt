@@ -1,7 +1,6 @@
 package com.example.davprox.ui.components
 
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,8 +21,11 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DataObject
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -33,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -44,7 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -63,11 +66,12 @@ fun TrafficDetailSheet(
     record: TrafficRecord,
     onDismiss: () -> Unit,
     onCopyCurl: () -> Unit,
+    onOpenInRepeater: (TrafficRecord) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Overview", "Request", "Response")
+    val tabs = listOf("Overview", "Headers", "Parameters", "Body", "Response")
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -77,7 +81,7 @@ fun TrafficDetailSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.88f)
+                .fillMaxHeight(0.9f)
                 .padding(horizontal = 16.dp)
         ) {
             // Header Row
@@ -107,37 +111,42 @@ fun TrafficDetailSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // Navigation Tabs
-            PrimaryTabRow(
+            // Navigation Tabs (Scrollable)
+            ScrollableTabRow(
                 selectedTabIndex = selectedTabIndex,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                edgePadding = 0.dp
             ) {
                 tabs.forEachIndexed { index, title ->
                     val tabIcon = when (index) {
                         0 -> Icons.Default.Info
-                        1 -> Icons.Default.CloudUpload
+                        1 -> Icons.Default.DataObject
+                        2 -> Icons.Default.Tune
+                        3 -> Icons.Default.CloudUpload
                         else -> Icons.Default.CloudDownload
                     }
                     Tab(
                         selected = selectedTabIndex == index,
                         onClick = { selectedTabIndex = index },
-                        text = { Text(title) },
+                        text = { Text(title, fontSize = 12.sp) },
                         icon = { Icon(imageVector = tabIcon, contentDescription = title, modifier = Modifier.size(16.dp)) },
                         modifier = Modifier.testTag("tab_$title")
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Tab Content
             Box(modifier = Modifier.weight(1f)) {
                 when (selectedTabIndex) {
-                    0 -> OverviewTab(record = record, onCopyCurl = onCopyCurl)
-                    1 -> RequestTab(record = record, onCopyCurl = onCopyCurl)
-                    2 -> ResponseTab(record = record)
+                    0 -> DetailOverviewTab(record = record, onCopyCurl = onCopyCurl, onOpenInRepeater = onOpenInRepeater)
+                    1 -> DetailHeadersTab(record = record)
+                    2 -> DetailParametersTab(record = record)
+                    3 -> DetailBodyTab(record = record)
+                    4 -> DetailResponseTab(record = record)
                 }
             }
         }
@@ -145,9 +154,10 @@ fun TrafficDetailSheet(
 }
 
 @Composable
-fun OverviewTab(
+fun DetailOverviewTab(
     record: TrafficRecord,
-    onCopyCurl: () -> Unit
+    onCopyCurl: () -> Unit,
+    onOpenInRepeater: (TrafficRecord) -> Unit
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -165,18 +175,21 @@ fun OverviewTab(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             FilledTonalButton(
-                onClick = onCopyCurl,
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag("copy_curl_button")
+                onClick = { onOpenInRepeater(record) },
+                modifier = Modifier.weight(1f).testTag("open_in_repeater_btn")
             ) {
-                Icon(
-                    imageVector = Icons.Default.ContentCopy,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Copy cURL")
+                Icon(imageVector = Icons.Default.Replay, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Repeater", fontSize = 12.sp)
+            }
+
+            OutlinedButton(
+                onClick = onCopyCurl,
+                modifier = Modifier.weight(1f).testTag("copy_curl_button")
+            ) {
+                Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Copy cURL", fontSize = 12.sp)
             }
 
             OutlinedButton(
@@ -186,20 +199,16 @@ fun OverviewTab(
                 },
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(
-                    imageVector = Icons.Default.ContentCopy,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Copy URL")
+                Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Copy URL", fontSize = 12.sp)
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Info Cards
-        InfoSectionTitle("Target URL")
+        // Target URL
+        InfoSectionTitle("Target Endpoint")
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
             shape = RoundedCornerShape(8.dp),
@@ -207,29 +216,31 @@ fun OverviewTab(
         ) {
             Text(
                 text = record.url,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = FontFamily.Monospace
-                ),
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(12.dp)
+                modifier = Modifier.padding(10.dp)
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        InfoSectionTitle("Connection Metrics")
+        Spacer(modifier = Modifier.height(14.dp))
+        InfoSectionTitle("Traffic Classification & Telemetry")
 
+        MetricRow("Classification", record.classification.label)
         MetricRow("HTTP Status", "${record.responseCode} ${record.responseMessage}".trim())
-        MetricRow("Latency", if (record.durationMs > 0) "${record.durationMs} ms" else "Pending")
-        MetricRow("Host & Port", "${record.host}:${record.port}")
+        MetricRow("Duration", if (record.durationMs > 0) "${record.durationMs} ms" else "Pending")
+        MetricRow("Domain & Port", "${record.host}:${record.port}")
+        MetricRow("Destination IP", record.destIp ?: "Pending DNS resolution")
         MetricRow("Client Source IP", record.clientIp)
-        MetricRow("Protocol", record.protocol)
+        MetricRow("Protocol & Scheme", "${record.protocol} (${record.scheme.uppercase()})")
+        MetricRow("Endpoint Path", record.path)
+        MetricRow("Query Parameters", "${record.queryParams.size} parameter(s)")
+        MetricRow("Form Parameters", "${record.formParameters.size} parameter(s)")
         MetricRow("Captured At", record.formattedTime)
         MetricRow("Request Size", formatBytes(record.requestSize))
         MetricRow("Response Size", formatBytes(record.responseSize))
-        MetricRow("TLS Tunnel", if (record.isTlsTunnel) "Yes (CONNECT)" else "No (HTTP Inspection)")
 
         if (record.error != null) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             InfoSectionTitle("Connection Error")
             Surface(
                 color = MaterialTheme.colorScheme.errorContainer,
@@ -240,7 +251,7 @@ fun OverviewTab(
                     text = record.error,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.padding(12.dp)
+                    modifier = Modifier.padding(10.dp)
                 )
             }
         }
@@ -248,10 +259,93 @@ fun OverviewTab(
 }
 
 @Composable
-fun RequestTab(
-    record: TrafficRecord,
-    onCopyCurl: () -> Unit
-) {
+fun DetailHeadersTab(record: TrafficRecord) {
+    val scrollState = rememberScrollState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(scrollState)
+            .padding(bottom = 24.dp)
+    ) {
+        InfoSectionTitle("Request Headers (${record.requestHeaders.size})")
+        record.requestContentType?.let {
+            Text(text = "Content-Type: $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+
+        if (record.requestHeaders.isEmpty()) {
+            Text(text = "No request headers captured", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+        } else {
+            HeadersTable(headers = record.requestHeaders)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        InfoSectionTitle("Response Headers (${record.responseHeaders.size})")
+        record.responseContentType?.let {
+            Text(text = "Content-Type: $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+
+        if (record.responseHeaders.isEmpty()) {
+            Text(text = "No response headers available", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+        } else {
+            HeadersTable(headers = record.responseHeaders)
+        }
+    }
+}
+
+@Composable
+fun DetailParametersTab(record: TrafficRecord) {
+    val scrollState = rememberScrollState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(scrollState)
+            .padding(bottom = 24.dp)
+    ) {
+        InfoSectionTitle("URL Query Parameters (${record.queryParams.size})")
+        Spacer(modifier = Modifier.height(6.dp))
+        if (record.queryParams.isEmpty()) {
+            Text(text = "No URL query parameters detected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+        } else {
+            HeadersTable(headers = record.queryParams)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        InfoSectionTitle("Form Submission Parameters (${record.formParameters.size})")
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = "Extracted from POST payload (${record.requestContentType ?: "N/A"})",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+
+        if (record.formParameters.isEmpty()) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "No structured form fields detected in this request",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(10.dp)
+                )
+            }
+        } else {
+            HeadersTable(headers = record.formParameters)
+        }
+    }
+}
+
+@Composable
+fun DetailBodyTab(record: TrafficRecord) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val scrollState = rememberScrollState()
@@ -267,35 +361,7 @@ fun RequestTab(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            InfoSectionTitle("Request Headers (${record.requestHeaders.size})")
-            OutlinedButton(
-                onClick = onCopyCurl,
-                modifier = Modifier.height(32.dp)
-            ) {
-                Text("cURL", fontSize = 12.sp)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        if (record.requestHeaders.isEmpty()) {
-            Text(
-                text = "No request headers captured",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline
-            )
-        } else {
-            HeadersTable(headers = record.requestHeaders)
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            InfoSectionTitle("Request Body")
+            InfoSectionTitle("Request Body (${formatBytes(record.requestSize)})")
             if (!record.requestBody.isNullOrBlank()) {
                 IconButton(
                     onClick = {
@@ -304,28 +370,40 @@ fun RequestTab(
                     },
                     modifier = Modifier.size(32.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.ContentCopy,
-                        contentDescription = "Copy body",
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "Copy body", modifier = Modifier.size(16.dp))
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        if (record.requestBody.isNullOrBlank()) {
+        if (record.isTlsTunnel) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Encrypted TLS Tunnel Payload: End-to-end encrypted directly with remote server. Packet metadata and handshake recorded.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else if (record.requestBody.isNullOrBlank()) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "(Empty body)",
+                    text = "(Empty request body)",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.padding(12.dp)
+                    modifier = Modifier.padding(10.dp)
                 )
             }
         } else {
@@ -335,7 +413,7 @@ fun RequestTab(
 }
 
 @Composable
-fun ResponseTab(record: TrafficRecord) {
+fun DetailResponseTab(record: TrafficRecord) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val scrollState = rememberScrollState()
@@ -346,7 +424,7 @@ fun ResponseTab(record: TrafficRecord) {
             .verticalScroll(scrollState)
             .padding(bottom = 24.dp)
     ) {
-        InfoSectionTitle("Response Status")
+        InfoSectionTitle("Status & Protocol")
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
             shape = RoundedCornerShape(8.dp),
@@ -359,25 +437,11 @@ fun ResponseTab(record: TrafficRecord) {
                     fontWeight = FontWeight.SemiBold
                 ),
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(12.dp)
+                modifier = Modifier.padding(10.dp)
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        InfoSectionTitle("Response Headers (${record.responseHeaders.size})")
-        Spacer(modifier = Modifier.height(6.dp))
-
-        if (record.responseHeaders.isEmpty()) {
-            Text(
-                text = "No response headers available",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline
-            )
-        } else {
-            HeadersTable(headers = record.responseHeaders)
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -393,11 +457,7 @@ fun ResponseTab(record: TrafficRecord) {
                     },
                     modifier = Modifier.size(32.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.ContentCopy,
-                        contentDescription = "Copy body",
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "Copy body", modifier = Modifier.size(16.dp))
                 }
             }
         }
@@ -411,10 +471,10 @@ fun ResponseTab(record: TrafficRecord) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "(Empty response body)",
+                    text = "(Empty response body or pending)",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.padding(12.dp)
+                    modifier = Modifier.padding(10.dp)
                 )
             }
         } else {
@@ -440,18 +500,14 @@ fun HeadersTable(headers: Map<String, String>) {
                 ) {
                     Text(
                         text = k,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.SemiBold
-                        ),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(0.4f)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = v,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontFamily = FontFamily.Monospace
-                        ),
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(0.6f)
                     )
@@ -481,7 +537,7 @@ fun CodeViewer(content: String) {
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(horizontalScroll)
-                .padding(12.dp)
+                .padding(10.dp)
         ) {
             Text(
                 text = formattedContent,
@@ -516,7 +572,7 @@ fun MetricRow(label: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 3.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(

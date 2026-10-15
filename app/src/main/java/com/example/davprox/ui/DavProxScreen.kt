@@ -2,7 +2,6 @@ package com.example.davprox.ui
 
 import android.content.Intent
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -24,10 +23,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Dataset
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Lan
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
@@ -35,10 +37,13 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -51,8 +56,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -76,8 +83,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.davprox.data.TrafficRepository
+import com.example.davprox.model.TrafficRecord
+import com.example.davprox.ui.components.DiagnosticsView
+import com.example.davprox.ui.components.EndpointsView
 import com.example.davprox.ui.components.LiveTestPanel
 import com.example.davprox.ui.components.ProxyConfigDialog
+import com.example.davprox.ui.components.RepeaterView
 import com.example.davprox.ui.components.TrafficDetailSheet
 import com.example.davprox.ui.components.TrafficItemRow
 
@@ -95,6 +107,22 @@ fun DavProxScreen(
     val proxyPort by viewModel.proxyPort.collectAsStateWithLifecycle()
     val activeConnections by viewModel.activeConnections.collectAsStateWithLifecycle()
     val proxyError by viewModel.proxyError.collectAsStateWithLifecycle()
+
+    val isPaused by viewModel.isPaused.collectAsStateWithLifecycle()
+    val isRedactionEnabled by viewModel.isRedactionEnabled.collectAsStateWithLifecycle()
+    val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
+
+    val endpoints by viewModel.filteredEndpoints.collectAsStateWithLifecycle()
+    val endpointSearchQuery by viewModel.endpointSearchQuery.collectAsStateWithLifecycle()
+
+    val repeaterOriginalRecord by viewModel.repeaterOriginalRecord.collectAsStateWithLifecycle()
+    val repeaterReplayedRecord by viewModel.repeaterReplayedRecord.collectAsStateWithLifecycle()
+    val isReplaying by viewModel.isReplaying.collectAsStateWithLifecycle()
+
+    val totalObserved by viewModel.totalObserved.collectAsStateWithLifecycle()
+    val httpsCount by viewModel.httpsTunnelsCount.collectAsStateWithLifecycle()
+    val parsedHttpCount by viewModel.parsedHttpCount.collectAsStateWithLifecycle()
+    val failuresCount by viewModel.failuresCount.collectAsStateWithLifecycle()
 
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val selectedStatusFilter by viewModel.selectedStatusFilter.collectAsStateWithLifecycle()
@@ -118,57 +146,101 @@ fun DavProxScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Security,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp)
+            Column {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Security,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "DavProx",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "by ENTITY_007 (Chukwuyem David)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "DavProx",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "by ENTITY_007 (Chukwuyem David)",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = { viewModel.togglePause() },
+                            modifier = Modifier.testTag("action_pause_toggle")
+                        ) {
+                            Icon(
+                                imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                contentDescription = if (isPaused) "Resume Capture" else "Pause Capture",
+                                tint = if (isPaused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                             )
                         }
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { showLiveTestPanel = true },
-                        modifier = Modifier.testTag("action_live_test")
-                    ) {
-                        Icon(imageVector = Icons.Default.Send, contentDescription = "Test Request")
-                    }
-                    IconButton(
-                        onClick = { showConfigDialog = true },
-                        modifier = Modifier.testTag("action_proxy_config")
-                    ) {
-                        Icon(imageVector = Icons.Default.Settings, contentDescription = "Proxy Settings")
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                        IconButton(
+                            onClick = { viewModel.toggleRedaction() },
+                            modifier = Modifier.testTag("action_redaction_toggle")
+                        ) {
+                            Icon(
+                                imageVector = if (isRedactionEnabled) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = "Privacy Redaction",
+                                tint = if (isRedactionEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        IconButton(
+                            onClick = { showLiveTestPanel = true },
+                            modifier = Modifier.testTag("action_live_test")
+                        ) {
+                            Icon(imageVector = Icons.Default.Send, contentDescription = "Test Request")
+                        }
+                        IconButton(
+                            onClick = { showConfigDialog = true },
+                            modifier = Modifier.testTag("action_proxy_config")
+                        ) {
+                            Icon(imageVector = Icons.Default.Settings, contentDescription = "Proxy Settings")
+                        }
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
                 )
-            )
+
+                // Navigation Tabs (Live Traffic, Endpoints, Repeater, Diagnostics)
+                PrimaryTabRow(
+                    selectedTabIndex = selectedTab.ordinal,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    MainAppTab.values().forEach { tab ->
+                        val tabIcon = when (tab) {
+                            MainAppTab.TRAFFIC -> Icons.Default.Lan
+                            MainAppTab.ENDPOINTS -> Icons.Default.Dataset
+                            MainAppTab.REPEATER -> Icons.Default.Replay
+                            MainAppTab.DIAGNOSTICS -> Icons.Default.Sensors
+                        }
+                        Tab(
+                            selected = selectedTab == tab,
+                            onClick = { viewModel.setSelectedTab(tab) },
+                            text = { Text(tab.label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                            icon = { Icon(imageVector = tabIcon, contentDescription = tab.label, modifier = Modifier.size(16.dp)) },
+                            modifier = Modifier.testTag("main_tab_${tab.name}")
+                        )
+                    }
+                }
+            }
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -186,109 +258,169 @@ fun DavProxScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Server Status Banner Card
-            ServerStatusBar(
-                isRunning = isProxyRunning,
-                port = proxyPort,
-                localIp = viewModel.getLocalIpAddress(),
-                activeConnections = activeConnections,
-                onToggle = { viewModel.toggleProxy() },
-                onOpenConfig = { showConfigDialog = true }
-            )
+            when (selectedTab) {
+                MainAppTab.TRAFFIC -> {
+                    // Server Status Banner Card
+                    ServerStatusBar(
+                        isRunning = isProxyRunning,
+                        port = proxyPort,
+                        localIp = viewModel.getLocalIpAddress(),
+                        activeConnections = activeConnections,
+                        isPaused = isPaused,
+                        onToggle = { viewModel.toggleProxy() },
+                        onOpenConfig = { showConfigDialog = true }
+                    )
 
-            // Search Bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { viewModel.onSearchQueryChanged(it) },
-                placeholder = { Text("Filter by URL, host, body...") },
-                leadingIcon = {
-                    Icon(imageVector = Icons.Default.Search, contentDescription = "Search")
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
-                            Icon(imageVector = Icons.Default.Clear, contentDescription = "Clear search")
+                    // Search Bar
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { viewModel.onSearchQueryChanged(it) },
+                        placeholder = { Text("Search by URL, host, path, parameters...") },
+                        leadingIcon = {
+                            Icon(imageVector = Icons.Default.Search, contentDescription = "Search")
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
+                                    Icon(imageVector = Icons.Default.Clear, contentDescription = "Clear search")
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .testTag("search_traffic_input")
+                    )
+
+                    // Filter Chips (Status and Methods)
+                    FilterBar(
+                        selectedStatus = selectedStatusFilter,
+                        selectedMethod = selectedMethodFilter,
+                        onStatusSelected = { viewModel.onStatusFilterChanged(it) },
+                        onMethodSelected = { viewModel.onMethodFilterChanged(it) }
+                    )
+
+                    // Sub-header toolbar: item count, export, clear
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "${records.size} of $totalCount packets ${if (isPaused) "(Paused)" else ""}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (isPaused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
+                        )
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            IconButton(
+                                onClick = { showExportDialog = true },
+                                enabled = totalCount > 0,
+                                modifier = Modifier.size(32.dp).testTag("export_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = "Export History",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { showClearConfirmDialog = true },
+                                enabled = totalCount > 0,
+                                modifier = Modifier.size(32.dp).testTag("clear_all_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteSweep,
+                                    contentDescription = "Clear History",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
-                },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .testTag("search_traffic_input")
-            )
 
-            // Filter Chips (Status and Methods)
-            FilterBar(
-                selectedStatus = selectedStatusFilter,
-                selectedMethod = selectedMethodFilter,
-                onStatusSelected = { viewModel.onStatusFilterChanged(it) },
-                onMethodSelected = { viewModel.onMethodFilterChanged(it) }
-            )
-
-            // Sub-header toolbar: item count, export, clear
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "${records.size} of $totalCount packets",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.outline
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    IconButton(
-                        onClick = { showExportDialog = true },
-                        enabled = totalCount > 0,
-                        modifier = Modifier.size(32.dp).testTag("export_btn")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = "Export History",
-                            modifier = Modifier.size(18.dp)
+                    // Main Traffic List
+                    if (records.isEmpty()) {
+                        EmptyTrafficState(
+                            isFilterActive = searchQuery.isNotEmpty() || selectedStatusFilter != StatusFilter.ALL || selectedMethodFilter != "ALL",
+                            isProxyRunning = isProxyRunning,
+                            onOpenTest = { showLiveTestPanel = true },
+                            onStartEngine = { viewModel.toggleProxy() }
                         )
-                    }
-
-                    IconButton(
-                        onClick = { showClearConfirmDialog = true },
-                        enabled = totalCount > 0,
-                        modifier = Modifier.size(32.dp).testTag("clear_all_btn")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteSweep,
-                            contentDescription = "Clear History",
-                            modifier = Modifier.size(18.dp)
-                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(top = 4.dp, bottom = 80.dp)
+                        ) {
+                            items(records, key = { it.id }) { record ->
+                                TrafficItemRow(
+                                    record = record,
+                                    onClick = { viewModel.selectRecord(record) }
+                                )
+                            }
+                        }
                     }
                 }
-            }
 
-            // Main Traffic List
-            if (records.isEmpty()) {
-                EmptyTrafficState(
-                    isFilterActive = searchQuery.isNotEmpty() || selectedStatusFilter != StatusFilter.ALL || selectedMethodFilter != "ALL",
-                    isProxyRunning = isProxyRunning,
-                    onOpenTest = { showLiveTestPanel = true },
-                    onStartEngine = { viewModel.toggleProxy() }
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 80.dp)
-                ) {
-                    items(records, key = { it.id }) { record ->
-                        TrafficItemRow(
-                            record = record,
-                            onClick = { viewModel.selectRecord(record) }
-                        )
-                    }
+                MainAppTab.ENDPOINTS -> {
+                    EndpointsView(
+                        endpoints = endpoints,
+                        searchQuery = endpointSearchQuery,
+                        onSearchQueryChanged = { viewModel.onEndpointSearchQueryChanged(it) },
+                        onInspectRecord = { recordId ->
+                            val found = records.firstOrNull { it.id == recordId }
+                            if (found != null) {
+                                viewModel.selectRecord(found)
+                            } else {
+                                Toast.makeText(context, "Sample record no longer in recent cache", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onSendToRepeater = { recordId ->
+                            val found = records.firstOrNull { it.id == recordId }
+                            if (found != null) {
+                                viewModel.prepareRepeater(found)
+                            } else {
+                                Toast.makeText(context, "Sample record no longer in recent cache", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onExportJson = { viewModel.getEndpointsExportJson() }
+                    )
+                }
+
+                MainAppTab.REPEATER -> {
+                    RepeaterView(
+                        originalRecord = repeaterOriginalRecord,
+                        replayedRecord = repeaterReplayedRecord,
+                        isLoading = isReplaying,
+                        onExecuteReplay = { url, method, headers, body ->
+                            viewModel.executeRepeaterRequest(url, method, headers, body)
+                        }
+                    )
+                }
+
+                MainAppTab.DIAGNOSTICS -> {
+                    DiagnosticsView(
+                        isRunning = isProxyRunning,
+                        port = proxyPort,
+                        localIp = viewModel.getLocalIpAddress(),
+                        activeConnections = activeConnections,
+                        totalObserved = totalObserved,
+                        httpsCount = httpsCount,
+                        parsedHttpCount = parsedHttpCount,
+                        failuresCount = failuresCount,
+                        lastError = proxyError,
+                        onToggleProxy = { viewModel.toggleProxy() },
+                        onRunDiagnosticTest = {
+                            viewModel.sendTestRequest("http://httpbin.org/get", "GET", routeViaLocalProxy = true)
+                            Toast.makeText(context, "Diagnostic test sent through 127.0.0.1:$proxyPort", Toast.LENGTH_SHORT).show()
+                        }
+                    )
                 }
             }
         }
@@ -303,6 +435,10 @@ fun DavProxScreen(
                 val curl = viewModel.getCurl(record)
                 clipboardManager.setText(AnnotatedString(curl))
                 Toast.makeText(context, "cURL command copied", Toast.LENGTH_SHORT).show()
+            },
+            onOpenInRepeater = { rec ->
+                viewModel.prepareRepeater(rec)
+                viewModel.selectRecord(null)
             }
         )
     }
@@ -372,13 +508,14 @@ fun ServerStatusBar(
     port: Int,
     localIp: String,
     activeConnections: Int,
+    isPaused: Boolean,
     onToggle: () -> Unit,
     onOpenConfig: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
             .clickable(onClick = onOpenConfig),
         colors = CardDefaults.cardColors(
             containerColor = if (isRunning)
@@ -424,7 +561,10 @@ fun ServerStatusBar(
                         color = if (isRunning) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = if (isRunning) "$activeConnections active connection(s) • Tap to configure" else "Tap to start or view Wi-Fi settings",
+                        text = if (isRunning)
+                            "$activeConnections active socket(s) • ${if (isPaused) "Capture Paused" else "Listening on 0.0.0.0"}"
+                        else
+                            "Tap to start or view Android Wi-Fi proxy guide",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -550,7 +690,7 @@ fun EmptyTrafficState(
                 text = if (isFilterActive)
                     "Try adjusting your search query or filter chips above."
                 else
-                    "Start testing by dispatching a live request or routing your mobile device Wi-Fi proxy to DavProx.",
+                    "Start testing by navigating websites in Chrome (configured with proxy) or dispatching live requests.",
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.outline
